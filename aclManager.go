@@ -29,9 +29,10 @@ type AclManager struct {
 func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) bool {
 	rc := mgr.rp.Get()
 	sids := GetPrincipals(mgr.db, rc, who)
+	sids = append(sids, Principal{who.GetSid(), who.GetTyp()})
 
 	for _, sid := range sids {
-		result := sid.isGrant(mgr.db, rc, what)
+		result := sid.isGrant(mgr.db, rc, what, perm)
 		if result == 0 {
 			continue
 		} else if result == Grant {
@@ -40,6 +41,7 @@ func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) b
 			return false
 		}
 	}
+
 	// 默认返回拒绝
 	return false
 }

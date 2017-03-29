@@ -9,7 +9,10 @@ import "sync"
 // who:  谁, 可以是user或role
 // what: 权限target
 // perm: 权限
-type RuleFn func(who interface{}, what interface{}, perm Permission) bool
+// 返回:  1: 授权
+//       -1: 拒绝
+//        0: 无法判断
+type RuleFn func(who Principal, what AclObject, perm Permission) int
 
 // Rule rule
 type Rule struct {
@@ -32,14 +35,54 @@ var (
 
 // RegisterRule 注册rule
 func RegisterRule(who string, r Rule) error {
+	var (
+		rs Rules
+		ok bool
+	)
+
+	rulesMap.Lock()
+	defer rulesMap.Unlock()
+
+	rs, ok = rulesMap.rules[who]
+	if !ok {
+		rulesMap.rules[who] = Rules{&r}
+		return nil
+	}
+
+	rulesMap.rules[who] = insertRule(rs, &r)
 	return nil
+}
+
+// UnregisterRule 删除rule
+func UnregisterRule(who string, name string) {
+	rulesMap.Lock()
+	defer rulesMap.Unlock()
+
+	if rs, ok := rulesMap.rules[who]; ok {
+		rulesMap.rules[who] = deleteRule(rs, name)
+	}
+
+	return
 }
 
 // GetRules get rules
 // 复制一份[]*Rule
-func GetRules(who string) []*Rule {
+func GetRules(who string) Rules {
+	var (
+		rs Rules
+		ok bool
+	)
 
-	return []*Rule{}
+	rulesMap.Lock()
+	defer rulesMap.Unlock()
+
+	rs, ok = rulesMap.rules[who]
+	if !ok {
+		return Rules{}
+	}
+	res := make(Rules, len(rs))
+	copy(res, rs)
+	return res
 }
 
 // Name rule name
@@ -52,10 +95,41 @@ func (r *Rule) Order() int {
 	return r.order
 }
 
+// insertRule insert rule to Rules, 按照order由低到高的顺序, 返回新的rules
 func insertRule(rs Rules, r *Rule) Rules {
+	nrs := make(Rules, len(rs)+1)
+
+	idx := 0
+	for _, ele := range rs {
+		if ele.Order() < r.Order() {
+			nrs[idx] = ele
+			idx++
+		} else {
+			// 将待增加的rule加入到Rules中
+			nrs[idx] = r
+			idx++
+			nrs[idx] = ele
+			idx++
+		}
+	}
+	if idx == len(rs) {
+		// 待增加的rule位于slice末尾的情况
+		nrs[idx] = r
+	}
 	return rs
 }
 
+// deleteRule 从rules中删除特定的rule, 返回新的rules
 func deleteRule(rs Rules, name string) Rules {
-	return rs
+	idx := 0
+	nrs := make(Rules, len(rs))
+
+	for _, ele := range rs {
+		if ele.Name() != name {
+			nrs[idx] = ele
+			idx++
+		}
+	}
+
+	return nrs[0:idx]
 }

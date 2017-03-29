@@ -14,7 +14,7 @@ import (
 type AclEntry struct {
 	ID           int64  `gorm:"column:id"`
 	ObjID        string `gorm:"size:100;column:obj_id;unique_index;"` // 对象
-	Sid          string `gorm:"size:100;column:sid;unique_index;"`    // the user, or role, or any grantAuthority
+	Sid          string `gorm:"size:100;column:sid;unique_index;"`    // the user, or role, or any AclObject
 	SidTyp       string `gorm:"size:100;column:sid_typ;"`             // indicate user or role or anything else
 	Order        int    // 规则的顺序, 判断权限时, 按照order从小到大逐个判断
 	Grant        bool   //

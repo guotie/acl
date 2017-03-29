@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"encoding/json"
+
 	"github.com/garyburd/redigo/redis"
 	"github.com/jinzhu/gorm"
 	"github.com/smtc/glog"
@@ -45,49 +47,47 @@ type UserRole struct {
 func GetPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 	// 如果是Role, 由于目前没有层级role, 这里直接返回role sid
 	if who.GetTyp() == RoleTyp {
-		return []Principal{Principal(who.GetSid())}
+		return []Principal{Principal{who.GetSid(), who.GetTyp()}}
 	}
 
 	// who为用户的情况
 	if who.GetTyp() == "Account" {
-		return GetUserPrincipals(db, rc, who.GetSid())
+		return GetUserPrincipals(db, rc, who)
 	}
 
-	return []Principal{Principal(who.GetSid())}
+	return []Principal{Principal{who.GetSid(), who.GetTyp()}}
 }
 
 // GetUserPrincipals Get User roles
-func GetUserPrincipals(db *gorm.DB, rc redis.Conn, sid string) []Principal {
-	roles := getUserRoles(db, rc, sid)
-	return append(roles, Principal(sid))
+func GetUserPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
+	roles := getUserRoles(db, rc, who)
+	return append(roles, Principal{who.GetSid(), who.GetTyp()})
 }
 
 // getUserRoles get user roles
-func getUserRoles(db *gorm.DB, rc redis.Conn, sid string) []Principal {
-	sids, err := getUserRolesFromRedis(rc, sid)
+func getUserRoles(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
+	sids, err := getUserRolesFromRedis(rc, who)
 	if err == nil {
 		return sids
 	}
-	var res []string
-	res, err = getUserRolesFromDB(db, sid)
+	var res []Principal
+	res, err = getUserRolesFromDB(db, who)
 	if err != nil {
 		glog.Error("getUserRolesFromDB failed: %v\n", err)
 		return []Principal{}
 	}
 
 	// 保存到缓存中
-	setUserRolesToRedis(rc, sid, res)
-	for _, s := range res {
-		sids = append(sids, Principal(s))
-	}
-	return sids
+	setUserRolesToRedis(rc, who.GetSid(), res)
+
+	return res
 }
 
 // getUserRolesFromRedis 从redis中获取用户roles
-func getUserRolesFromRedis(rc redis.Conn, sid string) ([]Principal, error) {
+func getUserRolesFromRedis(rc redis.Conn, who AclObject) ([]Principal, error) {
 	var sids []Principal
 
-	key := KeyUserRole(sid)
+	key := KeyUserRole(who.GetSid())
 	exist, err := redis.Bool(rc.Do("EXISTS", key))
 	if err != nil {
 		// redis出错
@@ -98,37 +98,42 @@ func getUserRolesFromRedis(rc redis.Conn, sid string) ([]Principal, error) {
 	}
 
 	// 取出 key 下的所有 members
-	reply, err := redis.Strings(rc.Do("SMEMBERS", key))
+	reply, err := redis.ByteSlices(rc.Do("SMEMBERS", key))
 	if err != nil {
 		return []Principal{}, err
 	}
 
 	for _, r := range reply {
-		sids = append(sids, Principal(r))
+		var p Principal
+		err = json.Unmarshal(r, &p)
+		if err != nil {
+			return nil, err
+		}
+		sids = append(sids, p)
 	}
 
 	return sids, nil
 }
 
 // getUserRolesFromDB 从数据库中获取用户roles
-func getUserRolesFromDB(db *gorm.DB, sid string) ([]string, error) {
+func getUserRolesFromDB(db *gorm.DB, who AclObject) ([]Principal, error) {
 	var (
 		ur   []UserRole
-		sids []string
+		sids []Principal
 	)
 
-	if err := db.Where("uid=?", sid).Find(&ur).Error; err != nil {
-		return []string{}, err
+	if err := db.Where("uid=?", who.GetSid()).Find(&ur).Error; err != nil {
+		return nil, err
 	}
 
 	for _, r := range ur {
-		sids = append(sids, r.Rid)
+		sids = append(sids, Principal{r.Rid, RoleTyp})
 	}
 
 	return sids, nil
 }
 
 // setUserRolesToRedis 设置用户roles到redis中
-func setUserRolesToRedis(rc redis.Conn, sid string, sids []string) {
+func setUserRolesToRedis(rc redis.Conn, sid string, sids []Principal) {
 	rc.Do("SADD", redis.Args{}.Add(sid).AddFlat(sids))
 }

@@ -11,6 +11,9 @@ func KeyUserRole(sid string) string {
 
 // KeyAclEntry AclEntry key
 // sid: principal string
+// HashMap
+// 用户或角色对应的AclEntrys
+// Hset AclEntry_{{ user or role sid}} AclEntry.Sid AclEntry
 func KeyAclEntry(sid string) string {
 	return "AclEntry_" + sid
 }
