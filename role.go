@@ -43,6 +43,11 @@ type UserRole struct {
 	CreatedAt time.Time
 }
 
+// GetPricipals get principals
+func (mgr *AclManager) GetPricipals(who AclObject) []Principal {
+	return GetUserPrincipals(mgr.db, mgr.rp.Get(), who)
+}
+
 // GetPrincipals get principals
 func GetPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 	// 如果是Role, 由于目前没有层级role, 这里直接返回role sid
@@ -55,32 +60,37 @@ func GetPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 		return GetUserPrincipals(db, rc, who)
 	}
 
+	glog.Warn("GetPrincipals: unknown Principal type %s\n", who.GetTyp())
 	return []Principal{Principal{who.GetSid(), who.GetTyp()}}
 }
 
 // GetUserPrincipals Get User roles
 func GetUserPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
-	roles := getUserRoles(db, rc, who)
+	roles, err := getUserRoles(db, rc, who)
+	if err != nil {
+		glog.Error("GetUserPrincipals: getUserRoles failed: %v\n", err)
+		return []Principal{Principal{who.GetSid(), who.GetTyp()}}
+	}
 	return append(roles, Principal{who.GetSid(), who.GetTyp()})
 }
 
 // getUserRoles get user roles
-func getUserRoles(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
+func getUserRoles(db *gorm.DB, rc redis.Conn, who AclObject) ([]Principal, error) {
 	sids, err := getUserRolesFromRedis(rc, who)
 	if err == nil {
-		return sids
+		return sids, nil
 	}
 	var res []Principal
 	res, err = getUserRolesFromDB(db, who)
 	if err != nil {
 		glog.Error("getUserRolesFromDB failed: %v\n", err)
-		return []Principal{}
+		return []Principal{}, err
 	}
 
 	// 保存到缓存中
 	setUserRolesToRedis(rc, who.GetSid(), res)
 
-	return res
+	return res, nil
 }
 
 // getUserRolesFromRedis 从redis中获取用户roles
