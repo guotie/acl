@@ -17,6 +17,14 @@ type AclManager struct {
 	rp *redis.Pool
 }
 
+// CreateAclManager create ACL manager
+func CreateAclManager(db *gorm.DB, pool *redis.Pool) *AclManager {
+	return &AclManager{
+		db: db,
+		rp: pool,
+	}
+}
+
 // IsGrant 判断是否有权限
 // who:  主体
 // what: 权限target

@@ -4,13 +4,13 @@ package acl
 // Role 与 User的关系
 
 import (
-	"fmt"
-	"time"
-
 	"encoding/json"
+	"strings"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/jinzhu/gorm"
+	"github.com/satori/go.uuid"
 	"github.com/smtc/glog"
 )
 
@@ -20,8 +20,8 @@ const RoleTyp = "Role"
 // Role role
 type Role struct {
 	ID        int64  `gorm:"column:id"`
-	Name      string `gorm:"column:name size:100"`
-	Sid       string `gorm:"size:100"`
+	Name      string `gorm:"column:name;size:100"`
+	Sid       string `gorm:"size:100;unique_index"`
 	CreatedAt time.Time
 }
 
@@ -38,8 +38,8 @@ func (*Role) GetTyp() string {
 // UserRole user 和role的对应关系表
 type UserRole struct {
 	ID        int64  `gorm:"column:id"`
-	UID       string `gorm:"column:uid size:100"`
-	Rid       string `gorm:"size:100"`
+	UID       string `gorm:"column:uid;size:100;index"`
+	Rid       string `gorm:"size:100;index"`
 	CreatedAt time.Time
 }
 
@@ -94,7 +94,7 @@ func getUserRolesFromRedis(rc redis.Conn, who AclObject) ([]Principal, error) {
 		return []Principal{}, err
 	}
 	if exist == false { // key 不存在
-		return []Principal{}, fmt.Errorf("UserRole cache %s Not exist", key)
+		return []Principal{}, ErrRedisKeyNotExist
 	}
 
 	// 取出 key 下的所有 members
@@ -136,4 +136,99 @@ func getUserRolesFromDB(db *gorm.DB, who AclObject) ([]Principal, error) {
 // setUserRolesToRedis 设置用户roles到redis中
 func setUserRolesToRedis(rc redis.Conn, sid string, sids []Principal) {
 	rc.Do("SADD", redis.Args{}.Add(sid).AddFlat(sids))
+}
+
+////////////////////////////Role//////////////////////////////
+
+// CreateRole 创建role
+func (mgr *AclManager) CreateRole(name, sid string) (*Role, error) {
+	var r Role
+
+	// 删除缓存
+	mgr.EvictRoleCache()
+
+	sid = strings.TrimSpace(sid)
+	if sid == "" {
+		sid = uuid.NewV4().String()
+	}
+
+	r = Role{Name: name, Sid: sid}
+	err := mgr.db.Create(&r).Error
+
+	return &r, err
+}
+
+// DeleteRole 删除role
+func (mgr *AclManager) DeleteRole(sid string) {
+	// 删除缓存
+	mgr.EvictRoleCache()
+
+	mgr.db.Where("sid=?", sid).Delete(&Role{})
+}
+
+// RenameRole 修改Role的名字
+// nname: 新名字
+func (mgr *AclManager) RenameRole(nname, sid string) error {
+	// 删除缓存 仅修改role name, 不需要删除缓存
+	// mgr.DeleteRoleCache()
+
+	err := mgr.db.Model(Role{}).Where("sid=?", sid).Update("name", nname).Error
+	return err
+}
+
+////////////////////////////UserRole//////////////////////////////
+
+// AddUserRoleRelation 增加用户到Role中
+func (mgr *AclManager) AddUserRoleRelation(uid, rid string) error {
+	var (
+		count int
+		ur    UserRole
+	)
+	// 先检查记录是否已经存在, 如果存在, 不做任何操作
+	mgr.db.Model(&UserRole{}).Where("uid = ? AND rid = ?", uid, rid).Count(&count)
+	if count > 0 {
+		glog.Warn("AddUserRoleRelation: uid %s rid %s has exist.\n", uid, rid)
+		return nil
+	}
+
+	// 删除缓存
+	mgr.EvictUserRoleCache(uid)
+	// 创建
+	ur.UID = uid
+	ur.Rid = rid
+	err := mgr.db.Create(&ur).Error
+	if err != nil {
+		glog.Error("AddUserRoleRelation: Create uid %s rid %s failed: %v\n", uid, rid, err)
+	}
+	return err
+}
+
+// DelUserRoleRelation 从Role中删除用户
+// byUser  User的sid
+// byRole  Role的sid
+//
+func (mgr *AclManager) DelUserRoleRelation(byUser, byRole string) {
+	if byUser == "" && byRole == "" {
+		glog.Warn("DelUserRoleRelation: invalid param, byUser & byRole should NOT be all empty\n")
+		return
+	}
+	// 删除缓存
+	if byRole != "" {
+		mgr.EvictRoleCache()
+	} else if byUser != "" {
+		mgr.EvictUserRoleCache(byUser)
+	}
+
+	var clause = mgr.db
+	if byRole != "" {
+		clause = clause.Where("rid=?", byRole)
+	}
+	if byUser != "" {
+		clause = clause.Where("uid=?", byUser)
+	}
+
+	err := clause.Delete(UserRole{}).Error
+	if err != nil {
+		glog.Error("DelUserRoleRelation: byUser=%s byRole=%s error=%v\n", byUser, byRole, err)
+	}
 }

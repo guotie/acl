@@ -1,6 +1,7 @@
 package acl
 
 import "sync"
+import "fmt"
 
 // 根据规则判断一个用户/角色对某个物体有何种权限
 // acl在很多时候
@@ -100,23 +101,33 @@ func insertRule(rs Rules, r *Rule) Rules {
 	nrs := make(Rules, len(rs)+1)
 
 	idx := 0
+	inserted := false
 	for _, ele := range rs {
-		if ele.Order() < r.Order() {
-			nrs[idx] = ele
-			idx++
-		} else {
-			// 将待增加的rule加入到Rules中
-			nrs[idx] = r
-			idx++
-			nrs[idx] = ele
-			idx++
+		// 校验name, rule的name不能出现重复
+		if r.Name() == ele.Name() {
+			// 名字重复, panic
+			panic(fmt.Sprintf("insertRule: rule name %s duplicated", r.Name()))
+			//return rs
 		}
+
+		if inserted || ele.Order() <= r.Order() {
+			nrs[idx] = ele
+			idx++
+			continue
+		}
+
+		// 将待增加的rule加入到Rules中
+		nrs[idx] = r
+		idx++
+		nrs[idx] = ele
+		idx++
+		inserted = true
 	}
 	if idx == len(rs) {
 		// 待增加的rule位于slice末尾的情况
 		nrs[idx] = r
 	}
-	return rs
+	return nrs
 }
 
 // deleteRule 从rules中删除特定的rule, 返回新的rules
