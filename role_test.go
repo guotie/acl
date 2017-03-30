@@ -51,11 +51,11 @@ func TestRole(t *testing.T) {
 			rid    string
 			expect []string
 		}{
-			{users[0], roleCases[0].Sid, []string{}},
-			{users[1], roleCases[1].Sid, []string{}},
-			{users[1], roleCases[3].Sid, []string{}},
-			{users[1], roleCases[2].Sid, []string{}},
-			{users[2], roleCases[4].Sid, []string{}},
+			{users[0], roleCases[0].Sid, []string{"admin", "a"}},
+			{users[1], roleCases[1].Sid, []string{"user", "hallAdmin", "root"}},
+			{users[1], roleCases[3].Sid, []string{"user", "hallAdmin", "root"}},
+			{users[1], roleCases[2].Sid, []string{"user", "hallAdmin", "root"}},
+			{users[2], roleCases[4].Sid, []string{"test"}},
 		}
 	)
 
@@ -75,6 +75,11 @@ func TestRole(t *testing.T) {
 		assert.Assertf(err == nil, "AddUserRole")
 
 		res := GetPrincipals(db, pool.Get(), ur.u)
+		roleExpect(t, res, ur.expect, idx)
+
+		// 从缓存中取
+		res, err = getUserRolesFromRedis(pool.Get(), ur.u)
+		assert.Assert(err == nil, "should success")
 		roleExpect(t, res, ur.expect, idx)
 	}
 }
