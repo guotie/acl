@@ -2,18 +2,13 @@
 
 参考借鉴 shiro和spring security的权限管理, 100% 测试覆盖
 
-## ACL权限判断
+# 名词概念
 
-```
-func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) bool
-```
-流程：
+## ACL
+访问控制列表。
 
-0. 首先，根据who查找who的principls;
-1. 查找who的每一个principls，是否有权限do waht;
-2. 
-
-## rule权限判断
+## Rule
+权限判断辅助规则, 目前需要硬编码。
 
 在有些时候，ACL判断规则会比较繁琐，例如：
 
@@ -27,10 +22,10 @@ func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) b
 
 当然，rule函数规则和业务关联紧密，需要在代码中写死，灵活性欠缺。
 
+## Principal
 
-## 缓存
+一个接口，特指Account或者Role
 
-查询权限时，优先从缓存中查找。
 
 # 用法说明
 
@@ -129,4 +124,31 @@ func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) b
 - what: 权限标的
 - perm: 请求的权限
 - 返回： true: 授权 false：拒绝
+
+
+# 权限判断流程
+
+权限判断通过这个接口来查询:
+
+```
+func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) bool
+```
+
+流程：
+
+0. 首先，根据who查找who的principls, 即who本身和who所属的roles;
+1. 对于who所属的每个principal: 
+    a. 查找who关联的rules, 轮询每条rule, 该rule 是否能够判定权限, 如果该rule判定出权限(Grant或Reject), 返回权限; 否则, 返回0;
+    b. 查找who关联所有 acl, 轮询每条acl, 该acl 是否能够判定权限, 如果能判定出权限(Grant或Reject), 返回权限; 否则, 返回0;
+2. 如果以上步骤未判定出权限, 返回拒绝(Reject)
+
+
+## 缓存
+
+查询权限时，优先从缓存中查找。
+
+缓存使用redis保存，主要有以下2种：
+
+1. user对应的角色列表, 使用 redis set 保存; 
+2. principal 对应的 acl 列表, 使用 redis hashmap 保存；
 
