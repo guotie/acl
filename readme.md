@@ -137,9 +137,13 @@ func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) b
 流程：
 
 0. 首先，根据who查找who的principls, 即who本身和who所属的roles;
+
 1. 对于who所属的每个principal: 
+
     a. 查找who关联的rules, 轮询每条rule, 该rule 是否能够判定权限, 如果该rule判定出权限(Grant或Reject), 返回权限; 否则, 返回0;
+
     b. 查找who关联所有 acl, 轮询每条acl, 该acl 是否能够判定权限, 如果能判定出权限(Grant或Reject), 返回权限; 否则, 返回0;
+
 2. 如果以上步骤未判定出权限, 返回拒绝(Reject)
 
 
