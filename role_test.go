@@ -57,6 +57,18 @@ func TestRole(t *testing.T) {
 			{users[1], roleCases[2].Sid, []string{"user", "hallAdmin", "root", "b"}},
 			{users[2], roleCases[4].Sid, []string{"test", "c"}},
 		}
+
+		delUrCases = []struct {
+			u      user
+			rid    string
+			expect []string
+		}{
+			{users[0], roleCases[0].Sid, []string{"a"}},
+			{users[1], roleCases[2].Sid, []string{"user", "hallAdmin", "b"}},
+			{users[1], roleCases[3].Sid, []string{"user", "b"}},
+			{users[1], roleCases[1].Sid, []string{"b"}},
+			{users[2], roleCases[4].Sid, []string{"c"}},
+		}
 	)
 
 	db, err := openDB()
@@ -85,6 +97,23 @@ func TestRole(t *testing.T) {
 		assert.Assertf(err == nil, "getUserRolesFromRedis should success: %v", err)
 		roleExpect(t, res, ur.expect, idx)
 	}
+
+	// delete user-role relation
+	for idx, ur := range delUrCases {
+		mgr.DelUserRoleRelation(ur.u.name, ur.rid)
+		_, err := getUserRolesFromRedis(pool.Get(), ur.u)
+		assert.Assertf(err == ErrRedisKeyNotExist, "redis should be empty: idx=%d", idx)
+
+		res := GetPrincipals(db, pool.Get(), ur.u)
+		roleExpect(t, res, ur.expect, idx)
+	}
+
+	// update role
+	err = mgr.RenameRole("administrator", "admin")
+	assert.Assert(err == nil, "rename role should success")
+	r, err := mgr.GetRole("admin")
+	assert.Assert(err == nil, "get role should success")
+	assert.Assert(r.Name == "administrator", "role name should updated")
 }
 
 func roleExpect(t *testing.T, roles []Principal, expect []string, idx int) {

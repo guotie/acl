@@ -187,6 +187,14 @@ func (mgr *AclManager) CreateRole(name, sid string) (*Role, error) {
 	return &r, err
 }
 
+// GetRole get role from db
+func (mgr *AclManager) GetRole(sid string) (*Role, error) {
+	var r Role
+
+	err := mgr.db.Where("sid=?", sid).Find(&r).Error
+	return &r, err
+}
+
 // DeleteRole 删除role
 func (mgr *AclManager) DeleteRole(sid string) {
 	// 删除缓存
