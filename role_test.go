@@ -81,7 +81,7 @@ func TestRole(t *testing.T) {
 
 	mgr := CreateAclManager(db, pool)
 	for _, r := range roleCases {
-		_, err := mgr.CreateRole(r.Name, r.Sid)
+		_, err := mgr.CreateRole(r.Name, r.Sid, "", "", "", "", 1)
 		assert.Assert(err == nil, "create role")
 	}
 
@@ -95,17 +95,17 @@ func TestRole(t *testing.T) {
 		// 从缓存中取
 		res, err = getUserRolesFromRedis(pool.Get(), ur.u)
 		assert.Assertf(err == nil, "getUserRolesFromRedis should success: %v", err)
-		roleExpect(t, res, ur.expect, idx)
+		roleExpect(t, res, ur.expect, 100+idx)
 	}
 
 	// delete user-role relation
 	for idx, ur := range delUrCases {
 		mgr.DelUserRoleRelation(ur.u.name, ur.rid)
 		_, err := getUserRolesFromRedis(pool.Get(), ur.u)
-		assert.Assertf(err == ErrRedisKeyNotExist, "redis should be empty: idx=%d", idx)
+		assert.Assertf(err == ErrRedisKeyNotExist, "redis should be empty: idx=%d", 200+idx)
 
 		res := GetPrincipals(db, pool.Get(), ur.u)
-		roleExpect(t, res, ur.expect, idx)
+		roleExpect(t, res, ur.expect, 300+idx)
 	}
 
 	// update role
@@ -124,7 +124,7 @@ func roleExpect(t *testing.T, roles []Principal, expect []string, idx int) {
 	sort.Sort(sort.StringSlice(expect))
 	rs := []string{}
 	for _, r := range roles {
-		rs = append(rs, r.Sid)
+		rs = append(rs, r.GetSid())
 	}
 	sort.Sort(sort.StringSlice(rs))
 

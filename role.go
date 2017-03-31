@@ -25,6 +25,11 @@ type Role struct {
 	ID        int64  `gorm:"column:id"`
 	Name      string `gorm:"column:name;size:100"`
 	Sid       string `gorm:"size:100;unique_index"`
+	Depart    string
+	Corp      string
+	City      string
+	Province  string
+	Level     int
 	CreatedAt time.Time
 }
 
@@ -55,18 +60,17 @@ func (mgr *AclManager) GetPricipals(who AclObject) []Principal {
 func GetPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 	// 如果是Role, 由于目前没有层级role, 这里直接返回role sid
 	if who.GetTyp() == RoleTyp {
-		return []Principal{Principal{who.GetSid(), who.GetTyp()}}
+		return []Principal{Principal(who)}
 	}
 
 	// who为用户的情况
 	if who.GetTyp() == AccountTyp {
 		ps := GetUserPrincipals(db, rc, who)
-		setUserRolesToRedis(rc, who.GetSid(), ps)
 		return ps
 	}
 
 	glog.Warn("GetPrincipals: unknown Principal type %s, sid=%s\n", who.GetTyp(), who.GetSid())
-	return []Principal{Principal{who.GetSid(), who.GetTyp()}}
+	return []Principal{Principal(who)}
 }
 
 // GetUserPrincipals Get User roles
@@ -74,9 +78,9 @@ func GetUserPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 	roles, err := getUserRoles(db, rc, who)
 	if err != nil {
 		glog.Error("GetUserPrincipals: getUserRoles failed: %v\n", err)
-		return []Principal{Principal{who.GetSid(), who.GetTyp()}}
+		return []Principal{Principal(who)}
 	}
-	return append(roles, Principal{who.GetSid(), who.GetTyp()})
+	return append(roles, Principal(who))
 }
 
 // getUserRoles get user roles
@@ -119,13 +123,14 @@ func getUserRolesFromRedis(rc redis.Conn, who AclObject) ([]Principal, error) {
 	}
 
 	for _, r := range reply {
-		var p Principal
+		var p Role
 		err = json.Unmarshal(r, &p)
 		if err != nil {
 			return nil, err
 		}
-		sids = append(sids, p)
+		sids = append(sids, &p)
 	}
+	sids = append(sids, Principal(who))
 
 	return sids, nil
 }
@@ -133,19 +138,23 @@ func getUserRolesFromRedis(rc redis.Conn, who AclObject) ([]Principal, error) {
 // getUserRolesFromDB 从数据库中获取用户roles
 func getUserRolesFromDB(db *gorm.DB, who AclObject) ([]Principal, error) {
 	var (
-		ur   []UserRole
-		sids []Principal
+		rs []*Role
+		ps []Principal
 	)
 
-	if err := db.Where("uid=?", who.GetSid()).Find(&ur).Error; err != nil {
+	// 关联查找
+	//db.LogMode(true)
+	err := db.Raw("select roles.* from roles left join user_roles AS ur on ur.rid=roles.sid where ur.uid=?",
+		who.GetSid()).Scan(&rs).Error
+	if err != nil {
 		return nil, err
 	}
 
-	for _, r := range ur {
-		sids = append(sids, Principal{r.Rid, RoleTyp})
+	for _, r := range rs {
+		//fmt.Println(r)
+		ps = append(ps, Principal(r))
 	}
-
-	return sids, nil
+	return ps, err
 }
 
 // setUserRolesToRedis 设置用户roles到redis中
@@ -170,7 +179,7 @@ func setUserRolesToRedis(rc redis.Conn, sid string, sids []Principal) {
 ////////////////////////////Role//////////////////////////////
 
 // CreateRole 创建role
-func (mgr *AclManager) CreateRole(name, sid string) (*Role, error) {
+func (mgr *AclManager) CreateRole(name, sid, depart, corp, city, province string, level int) (*Role, error) {
 	var r Role
 
 	// 删除缓存
@@ -181,7 +190,15 @@ func (mgr *AclManager) CreateRole(name, sid string) (*Role, error) {
 		sid = uuid.NewV4().String()
 	}
 
-	r = Role{Name: name, Sid: sid}
+	r = Role{
+		Name:     name,
+		Sid:      sid,
+		Depart:   depart,
+		Corp:     corp,
+		City:     city,
+		Province: province,
+		Level:    level,
+	}
 	err := mgr.db.Create(&r).Error
 
 	return &r, err

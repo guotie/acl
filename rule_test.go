@@ -14,14 +14,14 @@ func (h Hall) GetTyp() string { return "HallTyp" }
 var (
 	AT = "AccountTyp"
 
-	objs = []Hall{
-		{"南京营业厅01", "南京"},
-		{"南京营业厅02", "南京"},
-		{"南京营业厅03", "南京"},
-		{"苏州营业厅01", "苏州"},
-		{"镇江营业厅01", "镇江"},
-		{"无锡营业厅01", "无锡"},
-	}
+	// objs = []Hall{
+	// 	{"南京营业厅01", "南京"},
+	// 	{"南京营业厅02", "南京"},
+	// 	{"南京营业厅03", "南京"},
+	// 	{"苏州营业厅01", "苏州"},
+	// 	{"镇江营业厅01", "镇江"},
+	// 	{"无锡营业厅01", "无锡"},
+	// }
 
 	rs = Rules{
 		// 0
@@ -38,7 +38,7 @@ var (
 		&Rule{func(who Principal, what AclObject, perm Permission) int { return 0 }, 10, "10b"},
 		// 6
 		&Rule{func(who Principal, what AclObject, perm Permission) int {
-			if who.Sid == "user01" {
+			if who.GetSid() == "user01" {
 				return 1
 			}
 			return 0
@@ -54,15 +54,15 @@ var (
 	}
 
 	ps = []Principal{
-		Principal{"user01", AT}, // 超级管理员
-		Principal{"user02", AT}, // 管理员
-		Principal{"user03", AT}, // 普通人员
-		Principal{"user04", AT}, // 普通人员
-		Principal{"user05", AT}, // 无权限人员
-		Principal{"prov01", RoleTyp},
-		Principal{"prov02", RoleTyp},
-		Principal{"city01", RoleTyp},
-		Principal{"city02", RoleTyp},
+		user{"user01"}, // 超级管理员
+		user{"user02"}, // 管理员
+		user{"user03"}, // 普通人员
+		user{"user04"}, // 普通人员
+		user{"user05"}, // 无权限人员
+		&Role{Name: "prov01"},
+		&Role{Name: "prov02"},
+		&Role{Name: "city01"},
+		&Role{Name: "city02"},
 	}
 
 	testRules = []struct {

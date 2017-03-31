@@ -35,12 +35,19 @@ func CreateAclManager(db *gorm.DB, pool *redis.Pool) *AclManager {
 // 2. 从who关联的acl entry中逐条判断，如果有结果，返回结果；
 // 3. 返回false
 func (mgr *AclManager) IsGrant(who AclObject, what AclObject, perm Permission) bool {
+	if perm.Mask == 0 {
+		// 非法的Mask
+		return false
+	}
+
 	rc := mgr.rp.Get()
 	sids := GetPrincipals(mgr.db, rc, who)
-	sids = append(sids, Principal{who.GetSid(), who.GetTyp()})
+	//sids = append(sids, Principal(who))
+
+	//fmt.Printf("who: %v  principals: %v what: %v perm: %v\n", who, sids, what, perm)
 
 	for _, sid := range sids {
-		result := sid.isGrant(mgr.db, rc, what, perm)
+		result := isGrant(mgr.db, rc, sid, what, perm)
 		if result == 0 {
 			continue
 		} else if result == Grant {
