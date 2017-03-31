@@ -15,7 +15,10 @@ import (
 )
 
 // RoleTyp Role Type
-const RoleTyp = "Role"
+const (
+	RoleTyp    = "RoleTyp"
+	AccountTyp = "AccountTyp"
+)
 
 // Role role
 type Role struct {
@@ -56,11 +59,13 @@ func GetPrincipals(db *gorm.DB, rc redis.Conn, who AclObject) []Principal {
 	}
 
 	// who为用户的情况
-	if who.GetTyp() == "Account" {
-		return GetUserPrincipals(db, rc, who)
+	if who.GetTyp() == AccountTyp {
+		ps := GetUserPrincipals(db, rc, who)
+		setUserRolesToRedis(rc, who.GetSid(), ps)
+		return ps
 	}
 
-	glog.Warn("GetPrincipals: unknown Principal type %s\n", who.GetTyp())
+	glog.Warn("GetPrincipals: unknown Principal type %s, sid=%s\n", who.GetTyp(), who.GetSid())
 	return []Principal{Principal{who.GetSid(), who.GetTyp()}}
 }
 
@@ -145,7 +150,21 @@ func getUserRolesFromDB(db *gorm.DB, who AclObject) ([]Principal, error) {
 
 // setUserRolesToRedis 设置用户roles到redis中
 func setUserRolesToRedis(rc redis.Conn, sid string, sids []Principal) {
-	rc.Do("SADD", redis.Args{}.Add(sid).AddFlat(sids))
+	key := KeyUserRole(sid)
+	for _, sid := range sids {
+		val, err := json.Marshal(sid)
+		if err != nil {
+			glog.Error("setUserRolesToRedis Marshal failed: %v\n", err)
+			rc.Do("DEL", key)
+			return
+		}
+		_, err = rc.Do("SADD", key, val)
+		if err != nil {
+			glog.Error("setUserRolesToRedis failed: %v\n", err)
+			rc.Do("DEL", key)
+			return
+		}
+	}
 }
 
 ////////////////////////////Role//////////////////////////////

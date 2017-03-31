@@ -28,16 +28,16 @@ func (u user) GetSid() string {
 }
 
 func (u user) GetTyp() string {
-	return AT
+	return AccountTyp
 }
 
 func TestRole(t *testing.T) {
 	var (
 		users = []user{
-			{"a"},
-			{"b"},
-			{"c"},
-			{"d"},
+			{"a"}, // 0
+			{"b"}, // 1
+			{"c"}, // 2
+			{"d"}, // 3
 		}
 		roleCases = []*Role{
 			&Role{Name: "admin", Sid: "admin"},         // 0
@@ -52,10 +52,10 @@ func TestRole(t *testing.T) {
 			expect []string
 		}{
 			{users[0], roleCases[0].Sid, []string{"admin", "a"}},
-			{users[1], roleCases[1].Sid, []string{"user", "hallAdmin", "root"}},
-			{users[1], roleCases[3].Sid, []string{"user", "hallAdmin", "root"}},
-			{users[1], roleCases[2].Sid, []string{"user", "hallAdmin", "root"}},
-			{users[2], roleCases[4].Sid, []string{"test"}},
+			{users[1], roleCases[1].Sid, []string{"user", "b"}},
+			{users[1], roleCases[3].Sid, []string{"user", "hallAdmin", "b"}},
+			{users[1], roleCases[2].Sid, []string{"user", "hallAdmin", "root", "b"}},
+			{users[2], roleCases[4].Sid, []string{"test", "c"}},
 		}
 	)
 
@@ -63,6 +63,9 @@ func TestRole(t *testing.T) {
 	assert.Assert(err == nil, "opendb")
 	pool, err := openRedis()
 	assert.Assert(err == nil, "openredis")
+
+	// clean data
+	cleanRoles(db, pool)
 
 	mgr := CreateAclManager(db, pool)
 	for _, r := range roleCases {
@@ -79,15 +82,15 @@ func TestRole(t *testing.T) {
 
 		// 从缓存中取
 		res, err = getUserRolesFromRedis(pool.Get(), ur.u)
-		assert.Assert(err == nil, "should success")
+		assert.Assertf(err == nil, "getUserRolesFromRedis should success: %v", err)
 		roleExpect(t, res, ur.expect, idx)
 	}
 }
 
 func roleExpect(t *testing.T, roles []Principal, expect []string, idx int) {
 	assert.Assertf(len(roles) == len(expect),
-		"index: %d role expect length NOT equal: %d expect=%d",
-		idx, len(roles), len(expect))
+		"index: %d role expect length NOT equal: %d expect=%d roles=%v expect=%v",
+		idx, len(roles), len(expect), roles, expect)
 
 	sort.Sort(sort.StringSlice(expect))
 	rs := []string{}
